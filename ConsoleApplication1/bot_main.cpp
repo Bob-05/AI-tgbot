@@ -609,6 +609,7 @@ vector<string> searchRelevantChunks(const string& query, int topK = 5) {
     return results;
 }
 
+
 // ========== УПРОЩЕННЫЙ ПАРСИНГ ОТВЕТА ==========
 string extractAnswerFromYandexResponse(const string& rawResponse) {
     if (rawResponse.empty()) {
