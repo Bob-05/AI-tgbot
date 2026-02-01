@@ -18,5 +18,11 @@
     <ClCompile Include="bot_main.cpp">
       <Filter>Исходные файлы</Filter>
     </ClCompile>
+    <ClCompile Include="main.cpp">
+      <Filter>Исходные файлы</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="Result.txt" />
   </ItemGroup>
 </Project>

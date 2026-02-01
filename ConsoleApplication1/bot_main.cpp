@@ -8,12 +8,12 @@
 #include <nlohmann/json.hpp>
 #include <mutex>
 #include <vector>
-#include <sstream>
+//#include <sstream>
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
-#include <memory>
-#include <cctype>
+//#include <memory>
+//#include <cctype>
 
 // Вместо Windows-заголовков в начале файла
 #ifdef _WIN32
@@ -816,10 +816,15 @@ string generateAnswerWithRAG(const string& question) {
 
         // Упрощенный промпт
         string prompt =
-            "Ответь на вопрос по книге 'Путь наименьшего сопротивления' или жизни\\биографии её автора Роберта Фритца на основе приведенных фрагментов.\n\n"
-            "Контекст:\n" + context + "\n"
-            "Вопрос: " + question + "\n\n"
-            "Ответ:";
+            "Ты - эксперт по книге 'Путь наименьшего сопротивления' Роберта Фритца.\n"
+            "ПРАВИЛА ОТВЕТА:\n"
+            "1. Отвечай ТОЛЬКО на основе предоставленных фрагментов книги\n"
+            "2. Если в фрагментах нет ответа - честно скажи об этом\n"
+            "3. Буть точным: цитируй концепции, используя термины из книги\n"
+            "4. Структурируй ответ: ключевая мысль -> объяснение -> пример\n"
+            "5. Избегай общих фраз, буть конкретным\n\n"
+            "КОНТЕКСТ ИЗ КНИГИ:\n" + context + "\n\n"
+            "КВОПРОС ПОЛЬЗОВАТЕЛЯ:\n\n" + question + "\n\n";
 
         // Запрос к YandexGPT
         CURL* curl = curl_easy_init();
@@ -832,11 +837,11 @@ string generateAnswerWithRAG(const string& question) {
 
         // Упрощенный запрос
         json request = {
-            {"modelUri", "gpt://" + FOLDER_ID + "/yandexgpt-lite"},
+            {"modelUri", "gpt://" + FOLDER_ID + "/yandexgpt"},
             {"completionOptions", {
                 {"stream", false},
                 {"temperature", 0.3},
-                {"maxTokens", "800"}
+                {"maxTokens", "1200"}
             }},
             {"messages", {
                 {{"role", "user"}, {"text", prompt}}
@@ -960,10 +965,10 @@ void checkAPI() {
 // ========== MAIN ==========
 int main() {
     // Устанавливаем кодировку консоли
-//#ifdef _WIN32
+#ifdef _WIN32
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
-//#endif
+#endif
 
     // Инициализируем CURL
     curl_global_init(CURL_GLOBAL_ALL);
