@@ -224,7 +224,7 @@ vector<string> splitIntoChunks(const string& text, int maxChunkSize = 1500) {
 }
 
 // Получение эмбеддинга с обработкой ошибок
-vector<float> getEmbedding(const string& text, int retryCount = 3) {
+vector<float> getEmbedding(const string& text, int retryCount = 5) {
     string cleanedText = cleanText(text);
 
     if (cleanedText.empty()) {
@@ -426,7 +426,7 @@ bool initRAGSystem() {
 
     // Разбиваем на чанки
     cout << "✂️  Разбиваю текст на чанки..." << endl;
-    vector<string> chunks = splitIntoChunks(bookText, 1500);
+    vector<string> chunks = splitIntoChunks(bookText, 800);
 
     if (chunks.empty()) {
         cerr << "❌ Не удалось разбить текст на чанки" << endl;
@@ -496,13 +496,15 @@ bool initRAGSystem() {
         }
 
         // Пауза между запросами
+        /*
         if ((i + 1) % 3 == 0) {
             cout << "⏳ Пауза 2 секунды..." << endl;
             mySleep(2000);
         }
+        */
 
         // Периодически выводим статистику
-        if ((i + 1) % 10 == 0) {
+        if ((i + 1) % 20 == 0) {
             cout << "📊 Прогресс: " << (i + 1) << "/" << chunks.size()
                 << " (" << ((i + 1) * 100 / chunks.size()) << "%)"
                 << " Успешно: " << successful << " Ошибок: " << failed << endl;
@@ -792,7 +794,7 @@ string generateAnswerWithRAG(const string& question) {
 
     try {
         // Поиск релевантных чанков
-        vector<string> relevantChunks = searchRelevantChunks(question, 3);
+        vector<string> relevantChunks = searchRelevantChunks(question, 5);
 
         if (relevantChunks.empty()) {
             return "В книге не найдено информации по вашему вопросу. "
@@ -801,20 +803,24 @@ string generateAnswerWithRAG(const string& question) {
 
         // Формируем контекст (упрощенный)
         string context;
-        for (size_t i = 0; i < relevantChunks.size() && i < 3; i++) {
+        for (size_t i = 0; i < relevantChunks.size() && i < 5; i++) {
             string chunk = relevantChunks[i];
+            /*
             if (chunk.length() > 600) {
                 chunk = chunk.substr(0, 600) + "...";
             }
+            */
             context += "Фрагмент " + to_string(i + 1) + ": " + chunk + "\n\n";
         }
 
         // Ограничиваем общий размер
+        /*
         if (context.length() > 2500) {
             context = context.substr(0, 2500) + "...";
         }
+        */
 
-        // Упрощенный промпт
+        // Промпт
         string prompt =
             "Ты - эксперт по книге 'Путь наименьшего сопротивления' Роберта Фритца.\n"
             "ПРАВИЛА ОТВЕТА:\n"
@@ -840,7 +846,7 @@ string generateAnswerWithRAG(const string& question) {
             {"modelUri", "gpt://" + FOLDER_ID + "/yandexgpt"},
             {"completionOptions", {
                 {"stream", false},
-                {"temperature", 0.3},
+                {"temperature", 0.2},
                 {"maxTokens", "1200"}
             }},
             {"messages", {
@@ -1049,7 +1055,7 @@ int main() {
         bot.getApi().sendMessage(message->chat->id, status);
         });
 
-   
+
     bot.getEvents().onAnyMessage([&bot](Message::Ptr message) {
         if (message->text.empty() || message->text[0] == '/') return;
 
@@ -1137,4 +1143,5 @@ int main() {
 
     curl_global_cleanup();
     return 0;
+   
 }
