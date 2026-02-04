@@ -133,7 +133,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="bot_main.cpp" />
-    <ClCompile Include="main.cpp" />
+    <ClCompile Include="reserve.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="Result.txt" />

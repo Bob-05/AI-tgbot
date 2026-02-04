@@ -18,7 +18,7 @@
     <ClCompile Include="bot_main.cpp">
       <Filter>Исходные файлы</Filter>
     </ClCompile>
-    <ClCompile Include="main.cpp">
+    <ClCompile Include="reserve.cpp">
       <Filter>Исходные файлы</Filter>
     </ClCompile>
   </ItemGroup>

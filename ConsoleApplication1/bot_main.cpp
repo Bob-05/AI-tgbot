@@ -1,21 +1,18 @@
-﻿#include <tgbot/tgbot.h>
-#include <curl/curl.h>
-#include <iostream>
+﻿#include <iostream>
 #include <string>
 #include <fstream>
 #include <atomic>
-#include <chrono>
 #include <nlohmann/json.hpp>
 #include <mutex>
 #include <vector>
-//#include <sstream>
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
-//#include <memory>
-//#include <cctype>
 
-// Вместо Windows-заголовков в начале файла
+
+#include <tgbot/tgbot.h>
+#include <curl/curl.h>
+
 #ifdef _WIN32
 #include <windows.h>
 #else
@@ -32,15 +29,14 @@ void mySleep(int milliseconds) {
 }
 
 
-
+using std::cout;
 using namespace std;
 using namespace TgBot;
 using json = nlohmann::json;
 
-// ========== ВАШИ ДАННЫЕ ==========
+// ========== ДАННЫЕ ==========
 const string BOT_TOKEN = "8537200045:AAHl1R9_QGMLfVyOq8m7dfUd3n0ofALIaE8";
-const string BOOK_FILE = "book.txt";
-const string AUTHOR_FILE = "author.txt";
+const string INFO_FILE = "info.txt";
 
 // Yandex Cloud API
 const string FOLDER_ID = "b1gn41ejchr0jsrbtuo2";
@@ -56,12 +52,32 @@ mutex consoleMutex;
 mutex dataMutex;
 vector<pair<string, vector<float>>> bookChunks;
 
+
+
+
 // ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
 static size_t WriteCallback(void* contents, size_t size, size_t nmemb, string* response) {
     size_t totalSize = size * nmemb;
     response->append(static_cast<char*>(contents), totalSize);
     return totalSize;
 }
+
+/*
+void writeFile(const string& str, const string& filename) {
+    ofstream new_f;
+    new_f.open(filename, ios::app);
+
+    new_f << str;
+
+    new_f.close();
+}
+
+void writeChunksInFile(vector<string> chunks) {
+    for (const auto& key : chunks) {
+        writeFile(key, "chunks.txt");
+    }
+}
+*/
 
 string readFile(const string& filename) {
     ifstream file(filename, ios::binary);
@@ -95,36 +111,33 @@ string readFile(const string& filename) {
         content = content.substr(3);
     }
 
+    //writeFile(content, "new_f.txt");
+
     cout << "✅ Файл прочитан: " << content.size() << " символов" << endl;
     return content;
 }
 
-// Функция для очистки текста от недопустимых символов
 string cleanText(const string& text) {
-    string result = text;
+    if (text.empty()) return "";
 
-    // Удаляем нулевые байты и управляющие символы (кроме табуляции и новой строки)
-    result.erase(std::remove_if(result.begin(), result.end(),
-        [](char c) {
-            return c == '\0' || (c >= 0x00 && c <= 0x1F && c != '\t' && c != '\n' && c != '\r');
-        }),
-        result.end());
+    string result;
+    result.reserve(text.size());
 
-    // Убираем лишние пробелы в начале и конце
-    size_t start = result.find_first_not_of(" \t\n\r");
-    size_t end = result.find_last_not_of(" \t\n\r");
+    // Убираем только нулевые байты и управляющие символы кроме табуляции и переноса строк
+    for (char c : text) {
+        if (c == 0) continue; // нулевой байт
+        if (c >= 1 && c <= 8) continue; // управляющие символы
+        if (c >= 11 && c <= 12) continue; // управляющие символы
+        if (c >= 14 && c <= 31 && c != '\t' && c != '\n' && c != '\r') continue;
 
-    if (start != string::npos && end != string::npos) {
-        result = result.substr(start, end - start + 1);
-    }
-    else {
-        result.clear();
+        result.push_back(c);
     }
 
     return result;
 }
 
-vector<string> splitIntoChunks(const string& text, int maxChunkSize = 1500) {
+// Разбиение на чанки с перекрытием (overlap)
+vector<string> splitIntoChunks(const string& text, int chunkSize = 700, int overlap = 0) {
     vector<string> chunks;
 
     if (text.empty()) {
@@ -138,57 +151,37 @@ vector<string> splitIntoChunks(const string& text, int maxChunkSize = 1500) {
         return chunks;
     }
 
-    cout << "✂️  Начинаю разделение текста на чанки..." << endl;
-    cout << "📊 Исходный размер текста: " << cleanTextStr.size() << " байт" << endl;
+    cout << "✂️  Разбиваю текст на чанки с перекрытием..." << endl;
+    cout << "📊 Размер текста: " << cleanTextStr.size() << " символов" << endl;
+    cout << "📏 Размер чанка: " << chunkSize << " символов" << endl;
+    cout << "🔗 Перекрытие: " << overlap << " символов" << endl;
 
-    size_t textLength = cleanTextStr.size();
+    // Если текст меньше размера чанка
+    if (cleanTextStr.size() <= chunkSize) {
+        chunks.push_back(cleanTextStr);
+        cout << "✅ Создан 1 чанк (весь текст помещается в один чанк)" << endl;
+        return chunks;
+    }
+
     size_t pos = 0;
+    size_t textLength = cleanTextStr.size();
     int chunkCount = 0;
 
-    // Безопасная функция проверки пробела
-    auto isSafeSpace = [](unsigned char c) -> bool {
-        return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v';
-        };
+    // Сначала добавляем первый чанк
+    string firstChunk = cleanTextStr.substr(0, min((size_t)chunkSize, textLength));
+    chunks.push_back(firstChunk);
+    chunkCount++;
+
+    // Обрабатываем остальной текст
+    size_t step = chunkSize - overlap; // шаг между началами чанков
+    pos = step;
 
     while (pos < textLength) {
-        size_t chunkSize = min((size_t)maxChunkSize, textLength - pos);
-        size_t endPos = pos + chunkSize;
+        size_t chunkStart = pos;
+        size_t chunkEnd = min(pos + chunkSize, textLength);
 
-        // Если не конец текста, ищем хорошую границу
-        if (endPos < textLength) {
-            // Ищем последний пробел или новую строку в пределах чанка
-            size_t goodBreakPos = string::npos;
-
-            // Сначала ищем новую строку
-            for (size_t i = endPos - 1; i > pos && i > 0; i--) {
-                if (cleanTextStr[i] == '\n') {
-                    goodBreakPos = i + 1; // Включаем новую строку
-                    break;
-                }
-            }
-
-            // Если не нашли новую строку, ищем пробел
-            if (goodBreakPos == string::npos) {
-                for (size_t i = endPos - 1; i > pos && i > 0; i--) {
-                    unsigned char c = static_cast<unsigned char>(cleanTextStr[i]);
-                    if (c == ' ') {
-                        goodBreakPos = i;
-                        break;
-                    }
-                }
-            }
-
-            // Если нашли хорошую границу и она не слишком близко к началу
-            if (goodBreakPos != string::npos && goodBreakPos > pos + maxChunkSize / 3) {
-                endPos = goodBreakPos;
-            }
-        }
-
-        // Вырезаем чанк
-        string chunk = cleanTextStr.substr(pos, endPos - pos);
-
-        // Очищаем чанк
-        chunk = cleanText(chunk);
+        // Извлекаем чанк
+        string chunk = cleanTextStr.substr(chunkStart, chunkEnd - chunkStart);
 
         if (!chunk.empty()) {
             chunks.push_back(chunk);
@@ -199,31 +192,55 @@ vector<string> splitIntoChunks(const string& text, int maxChunkSize = 1500) {
             }
         }
 
-        // Перемещаем позицию
-        pos = endPos;
+        // Переходим к следующему чанку
+        pos += step;
 
-        // Пропускаем пробелы в начале следующего чанка (безопасно)
-        while (pos < textLength) {
-            unsigned char c = static_cast<unsigned char>(cleanTextStr[pos]);
-            if (isSafeSpace(c)) {
-                pos++;
+        // Если осталось меньше чем step символов, выходим
+        if (textLength - pos < step) {
+            // Добавляем последний чанк до конца текста
+            if (pos < textLength) {
+                string lastChunk = cleanTextStr.substr(pos);
+                if (!lastChunk.empty()) {
+                    chunks.push_back(lastChunk);
+                    chunkCount++;
+                }
+            }
+            break;
+        }
+    }
+
+    cout << "✅ Создано " << chunks.size() << " чанков с перекрытием" << endl;
+
+    // Выводим информацию о перекрытии
+    if (chunks.size() > 1) {
+        // Проверяем перекрытие между первыми двумя чанками
+        size_t overlapSize = 0;
+        string chunk1 = chunks[0];
+        string chunk2 = chunks[1];
+
+        // Ищем общее окончание/начало
+        size_t checkLen = min(chunk1.size(), chunk2.size());
+        for (size_t i = 0; i < checkLen; i++) {
+            size_t pos1 = chunk1.size() - i - 1;
+            size_t pos2 = i;
+
+            if (chunk1[pos1] == chunk2[pos2]) {
+                overlapSize++;
             }
             else {
                 break;
             }
         }
+
+        cout << "🔗 Фактическое перекрытие между чанками: ~" << overlapSize << " символов" << endl;
     }
 
-    cout << "✅ Разделение завершено! Создано " << chunks.size() << " чанков" << endl;
-
-    if (!chunks.empty()) {
-        cout << "📊 Средний размер чанка: " << (cleanTextStr.size() / chunks.size()) << " байт" << endl;
-    }
+    // Записываем чанки в файл для отладки
+   //writeChunksInFile(chunks);
 
     return chunks;
 }
 
-// Получение эмбеддинга с обработкой ошибок
 vector<float> getEmbedding(const string& text, int retryCount = 5) {
     string cleanedText = cleanText(text);
 
@@ -365,7 +382,6 @@ vector<float> getEmbedding(const string& text, int retryCount = 5) {
     return {};
 }
 
-// Косинусное сходство с проверкой
 float cosineSimilarity(const vector<float>& a, const vector<float>& b) {
     if (a.size() != b.size() || a.empty() || b.empty()) {
         return 0.0f;
@@ -395,38 +411,30 @@ float cosineSimilarity(const vector<float>& a, const vector<float>& b) {
     return max(-1.0f, min(1.0f, similarity));
 }
 
-// Инициализация RAG системы
 bool initRAGSystem() {
     lock_guard<mutex> lock(consoleMutex);
     cout << "🔄 Инициализация RAG системы..." << endl;
 
     // Проверяем существование файлов
     {
-        ifstream bookFile(BOOK_FILE);
-        if (!bookFile.good()) {
-            cerr << "❌ Файл книги не найден: " << BOOK_FILE << endl;
+        ifstream infoFile(INFO_FILE);
+        if (!infoFile.good()) {
+            cerr << "❌ Файл книги не найден: " << INFO_FILE << endl;
             return false;
         }
-        bookFile.close();
+        infoFile.close();
     }
 
-    string bookText = readFile(BOOK_FILE);
+    string infoFile = readFile(INFO_FILE);
 
-    if (bookText.empty()) {
+    if (infoFile.empty()) {
         cerr << "❌ Текст книги пуст" << endl;
         return false;
     }
 
-    // Добавляем информацию об авторе
-    string authorText = readFile(AUTHOR_FILE);
-    if (!authorText.empty()) {
-        bookText = "ИНФОРМАЦИЯ ОБ АВТОРЕ:\n" + authorText + "\n\n" + bookText;
-        cout << "✅ Добавлена информация об авторе" << endl;
-    }
-
     // Разбиваем на чанки
     cout << "✂️  Разбиваю текст на чанки..." << endl;
-    vector<string> chunks = splitIntoChunks(bookText, 800);
+    vector<string> chunks = splitIntoChunks(infoFile, 700);
 
     if (chunks.empty()) {
         cerr << "❌ Не удалось разбить текст на чанки" << endl;
@@ -495,13 +503,11 @@ bool initRAGSystem() {
             }
         }
 
-        // Пауза между запросами
-        /*
-        if ((i + 1) % 3 == 0) {
-            cout << "⏳ Пауза 2 секунды..." << endl;
-            mySleep(2000);
+        // Пауза между запросами (максимум 10 запр. / секунду)
+        if (!((i + 1) % 10)) {
+            cout << "⏳ Пауза 1 секунда..." << endl;
+            mySleep(1000);
         }
-        */
 
         // Периодически выводим статистику
         if ((i + 1) % 20 == 0) {
@@ -520,8 +526,7 @@ bool initRAGSystem() {
     }
 }
 
-// Поиск релевантных чанков
-vector<string> searchRelevantChunks(const string& query, int topK = 5) {
+vector<string> searchRelevantChunks(const string& query, int topK = 7) {
     vector<string> results;
 
     {
@@ -588,7 +593,7 @@ vector<string> searchRelevantChunks(const string& query, int topK = 5) {
                 }
 
                 float score = queryWords.empty() ? 0.0f : static_cast<float>(matches) / queryWords.size();
-                if (score > 0.3) {
+                if (score > 0.25) {
                     scoredChunks.push_back({ score, chunk });
                 }
             }
@@ -611,8 +616,6 @@ vector<string> searchRelevantChunks(const string& query, int topK = 5) {
     return results;
 }
 
-
-// ========== УПРОЩЕННЫЙ ПАРСИНГ ОТВЕТА ==========
 string extractAnswerFromYandexResponse(const string& rawResponse) {
     if (rawResponse.empty()) {
         cerr << "❌ Пустой ответ от API" << endl;
@@ -784,7 +787,6 @@ string extractAnswerFromYandexResponse(const string& rawResponse) {
     }
 }
 
-// Генерация ответа
 string generateAnswerWithRAG(const string& question) {
     if (question.empty()) {
         return "Пожалуйста, задайте вопрос о книге.";
@@ -794,37 +796,24 @@ string generateAnswerWithRAG(const string& question) {
 
     try {
         // Поиск релевантных чанков
-        vector<string> relevantChunks = searchRelevantChunks(question, 5);
+        vector<string> relevantChunks = searchRelevantChunks(question);
 
         if (relevantChunks.empty()) {
             return "В книге не найдено информации по вашему вопросу. "
                 "Попробуйте переформулировать вопрос.";
         }
 
-        // Формируем контекст (упрощенный)
+        // Формируем контекст
         string context;
-        for (size_t i = 0; i < relevantChunks.size() && i < 5; i++) {
-            string chunk = relevantChunks[i];
-            /*
-            if (chunk.length() > 600) {
-                chunk = chunk.substr(0, 600) + "...";
-            }
-            */
-            context += "Фрагмент " + to_string(i + 1) + ": " + chunk + "\n\n";
+        for (size_t i = 0; i < relevantChunks.size(); i++) {
+            context += "Фрагмент " + to_string(i + 1) + ": " + relevantChunks[i] + "\n\n";
         }
-
-        // Ограничиваем общий размер
-        /*
-        if (context.length() > 2500) {
-            context = context.substr(0, 2500) + "...";
-        }
-        */
 
         // Промпт
         string prompt =
             "Ты - эксперт по книге 'Путь наименьшего сопротивления' Роберта Фритца.\n"
             "ПРАВИЛА ОТВЕТА:\n"
-            "1. Отвечай ТОЛЬКО на основе предоставленных фрагментов книги\n"
+            "1. Отвечай ТОЛЬКО на основе предоставленных фрагментов книги, биографии и творчества автора, ключевым концепциям и методам, описанным в книге\n"
             "2. Если в фрагментах нет ответа - честно скажи об этом\n"
             "3. Буть точным: цитируй концепции, используя термины из книги\n"
             "4. Структурируй ответ: ключевая мысль -> объяснение -> пример\n"
@@ -841,13 +830,13 @@ string generateAnswerWithRAG(const string& question) {
             return "Ошибка подключения.";
         }
 
-        // Упрощенный запрос
+        // Упрощенный
         json request = {
             {"modelUri", "gpt://" + FOLDER_ID + "/yandexgpt"},
             {"completionOptions", {
                 {"stream", false},
                 {"temperature", 0.2},
-                {"maxTokens", "1200"}
+                {"maxTokens", "1100"}
             }},
             {"messages", {
                 {{"role", "user"}, {"text", prompt}}
@@ -861,11 +850,11 @@ string generateAnswerWithRAG(const string& question) {
 
         curl_easy_setopt(curl, CURLOPT_URL, YANDEX_GPT_URL.c_str());
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-        
+
         // КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: Используем error_handler_t::replace
         string requestBody = request.dump(-1, ' ', false, json::error_handler_t::replace);
         curl_easy_setopt(curl, CURLOPT_POSTFIELDS, requestBody.c_str());
-        
+
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
@@ -899,7 +888,6 @@ string generateAnswerWithRAG(const string& question) {
     }
 }
 
-// Проверка API
 void checkAPI() {
     cout << "🔍 Проверка доступности Yandex Cloud API..." << endl;
 
@@ -916,7 +904,7 @@ void checkAPI() {
         {"modelUri", "gpt://" + FOLDER_ID + "/yandexgpt-lite"},
         {"completionOptions", {
             {"stream", false},
-            {"temperature", 0.1},
+            {"temperature", 0.2},
             {"maxTokens", "10"}
         }},
         {"messages", {
@@ -931,10 +919,10 @@ void checkAPI() {
 
     curl_easy_setopt(curl, CURLOPT_URL, YANDEX_GPT_URL.c_str());
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-    
+
     string requestBody = testRequest.dump(-1, ' ', false, json::error_handler_t::replace);
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, requestBody.c_str());
-    
+
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
@@ -968,8 +956,12 @@ void checkAPI() {
 }
 
 
-// ========== MAIN ==========
+// ========== Вход ==========
 int main() {
+    //значения для определения администратора:
+    int64_t id_admin_chat;
+    bool checkIdAdminChat = false;
+
     // Устанавливаем кодировку консоли
 #ifdef _WIN32
     SetConsoleOutputCP(CP_UTF8);
@@ -979,11 +971,11 @@ int main() {
     // Инициализируем CURL
     curl_global_init(CURL_GLOBAL_ALL);
 
-    cout << "========================================" << endl;
-    cout << "🤖 Telegram Bot with Advanced RAG" << endl;
+    cout << "===========================================" << endl;
+    cout << "🤖 Telegram Bot (v. 1.2.0) with Advanced RAG" << endl;
     cout << "📚 Книга: Путь наименьшего сопротивления" << endl;
     cout << "👤 Автор: Роберт Фритц" << endl;
-    cout << "========================================" << endl;
+    cout << "===========================================" << endl;
 
     // Инициализация RAG
     if (!initRAGSystem()) {
@@ -1006,7 +998,7 @@ int main() {
     Bot bot(BOT_TOKEN);
 
     bot.getEvents().onCommand("start", [&bot](Message::Ptr message) {
-        string welcome = "🤖 Бот с RAG технологией\n\n";
+        string welcome = "🤖 Бот с RAG технологией (v. 1.2.0)\n\n";
         welcome += "📚 Отвечаю на вопросы по книге:\n";
         welcome += "«Путь наименьшего сопротивления»\n\n";
         welcome += "👤 Автор: Роберт Фритц\n\n";
@@ -1034,8 +1026,16 @@ int main() {
         bot.getApi().sendMessage(message->chat->id, welcome);
         });
 
-    bot.getEvents().onCommand("status", [&bot](Message::Ptr message) {
-        string status = "📊 Статус системы\n\n";
+    bot.getEvents().onCommand("status", [&bot, &id_admin_chat, &checkIdAdminChat](Message::Ptr message) {
+        string status = "📊 Статус системы \n\n";
+
+        /*
+        if (!checkIdAdminChat) {
+            id_admin_chat = message->chat->id;
+            checkIdAdminChat = true;
+            status += "---admin---\n";
+        }
+        */
 
         {
             lock_guard<mutex> dataLock(dataMutex);
@@ -1056,7 +1056,7 @@ int main() {
         });
 
 
-    bot.getEvents().onAnyMessage([&bot](Message::Ptr message) {
+    bot.getEvents().onAnyMessage([&bot, &id_admin_chat, &checkIdAdminChat](Message::Ptr message) {
         if (message->text.empty() || message->text[0] == '/') return;
 
         try {
@@ -1073,10 +1073,14 @@ int main() {
             cerr << "❌ Ошибка sendChatAction: " << errorMsg << endl;
         }
 
+        //bot.getApi().sendMessage(id_admin_chat, "Вопрос пользователя " + message->from->username + ": \n\n" + message->text);
+
         string answer = generateAnswerWithRAG(message->text);
 
         try {
             bot.getApi().sendMessage(message->chat->id, answer);
+
+            //bot.getApi().sendMessage(id_admin_chat, "Ответ пользователю " + message->from->username + ": \n\n" + answer);
         }
         catch (const exception& e) {
             string errorMsg = e.what();
@@ -1143,5 +1147,5 @@ int main() {
 
     curl_global_cleanup();
     return 0;
-   
+
 }
