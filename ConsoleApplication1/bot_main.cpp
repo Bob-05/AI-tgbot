@@ -35,9 +35,8 @@ using namespace TgBot;
 using json = nlohmann::json;
 
 // ========== ДАННЫЕ ==========
-//const string BOT_TOKEN = "";
 const string BOT_TOKEN = "";
-const string INFO_FILE = "info.txt";
+const string INFO_FILE = "";
 
 // Yandex Cloud API
 const string FOLDER_ID = "";
@@ -132,7 +131,6 @@ string cleanText(const string& text) {
         if (c >= 14 && c <= 31 && c != '\t' && c != '\n' && c != '\r') continue;
 
         result.push_back(c);
-
     }
 
     return result;
@@ -554,7 +552,7 @@ vector<string> searchRelevantChunks(const string& query, int topK = 7) {
             for (const auto& [chunk, embedding] : bookChunks) {
                 if (!embedding.empty()) {
                     float score = cosineSimilarity(queryEmbedding, embedding);
-                    if (score > 0.25) {
+                    if (score > 0.3) {
                         scoredChunks.push_back({ score, chunk });
                     }
                 }
@@ -816,7 +814,7 @@ string generateAnswerWithRAG(const string& question) {
             "Ты - эксперт по книге 'Путь наименьшего сопротивления' Роберта Фритца.\n"
             "ПРАВИЛА ОТВЕТА:\n"
             "1. Отвечай ТОЛЬКО на основе предоставленных фрагментов книги, биографии и творчества автора, ключевым концепциям и методам, описанным в книге\n"
-            "2. Если в фрагментах нет ответа - вежливо откажись отвечать\n"
+            "2. Если в фрагментах нет ответа - честно скажи об этом\n"
             "3. Буть точным: цитируй концепции, используя термины из книги\n"
             "4. Структурируй ответ: ключевая мысль -> объяснение -> пример\n"
             "5. Избегай общих фраз, буть конкретным\n\n"
