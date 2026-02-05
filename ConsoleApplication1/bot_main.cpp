@@ -35,12 +35,13 @@ using namespace TgBot;
 using json = nlohmann::json;
 
 // ========== ДАННЫЕ ==========
-const string BOT_TOKEN = "8537200045:AAHl1R9_QGMLfVyOq8m7dfUd3n0ofALIaE8";
+//const string BOT_TOKEN = "";
+const string BOT_TOKEN = "";
 const string INFO_FILE = "info.txt";
 
 // Yandex Cloud API
-const string FOLDER_ID = "b1gn41ejchr0jsrbtuo2";
-const string API_KEY = "AQVN0I6rC0xuMtV2Bm-mj-4UWS5hibL_Nezk3pwd";
+const string FOLDER_ID = "";
+const string API_KEY = "";
 
 // API URLs
 const string YANDEX_GPT_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion";
@@ -131,6 +132,7 @@ string cleanText(const string& text) {
         if (c >= 14 && c <= 31 && c != '\t' && c != '\n' && c != '\r') continue;
 
         result.push_back(c);
+
     }
 
     return result;
@@ -552,7 +554,7 @@ vector<string> searchRelevantChunks(const string& query, int topK = 7) {
             for (const auto& [chunk, embedding] : bookChunks) {
                 if (!embedding.empty()) {
                     float score = cosineSimilarity(queryEmbedding, embedding);
-                    if (score > 0.3) {
+                    if (score > 0.25) {
                         scoredChunks.push_back({ score, chunk });
                     }
                 }
@@ -814,7 +816,7 @@ string generateAnswerWithRAG(const string& question) {
             "Ты - эксперт по книге 'Путь наименьшего сопротивления' Роберта Фритца.\n"
             "ПРАВИЛА ОТВЕТА:\n"
             "1. Отвечай ТОЛЬКО на основе предоставленных фрагментов книги, биографии и творчества автора, ключевым концепциям и методам, описанным в книге\n"
-            "2. Если в фрагментах нет ответа - честно скажи об этом\n"
+            "2. Если в фрагментах нет ответа - вежливо откажись отвечать\n"
             "3. Буть точным: цитируй концепции, используя термины из книги\n"
             "4. Структурируй ответ: ключевая мысль -> объяснение -> пример\n"
             "5. Избегай общих фраз, буть конкретным\n\n"
@@ -972,7 +974,7 @@ int main() {
     curl_global_init(CURL_GLOBAL_ALL);
 
     cout << "===========================================" << endl;
-    cout << "🤖 Telegram Bot (v. 1.2.0) with Advanced RAG" << endl;
+    cout << "🤖 Telegram Bot (v. 1.3.0) with Advanced RAG" << endl;
     cout << "📚 Книга: Путь наименьшего сопротивления" << endl;
     cout << "👤 Автор: Роберт Фритц" << endl;
     cout << "===========================================" << endl;
@@ -998,7 +1000,7 @@ int main() {
     Bot bot(BOT_TOKEN);
 
     bot.getEvents().onCommand("start", [&bot](Message::Ptr message) {
-        string welcome = "🤖 Бот с RAG технологией (v. 1.2.0)\n\n";
+        string welcome = "🤖 Бот с RAG технологией (v. 1.3.0)\n\n";
         welcome += "📚 Отвечаю на вопросы по книге:\n";
         welcome += "«Путь наименьшего сопротивления»\n\n";
         welcome += "👤 Автор: Роберт Фритц\n\n";
