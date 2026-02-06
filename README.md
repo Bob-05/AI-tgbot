@@ -20,3 +20,25 @@
  - Резервный текстовый поиск при недоступности эмбеддингов
  - Поддержка длинных ответов (>4000 символов)
  - Детальное логирование и отладка
+
+----------------------------------------------Anglish----------------------------------------------
+📘 Book RAG Assistant — an intelligent book assistant
+This project implements a RAG system (Retrieval-Augmented Generation) for a Telegram bot that answers users' questions about the book "The Path of Least Resistance" by Robert Fritz.
+
+🧩 Architecture:
+ - Loading and preprocessing of text — reading, cleaning, chunking with overlap.
+ - Vectorization — getting embeddings via the Yandex Cloud Embeddings API.
+ - Semantic search — cosine similarity between a query and chunks.
+ - Response generation — creating a prompt and a request to Yandex GPT.
+ - Telegram interface — communication with the user via TgBot.
+
+🔧 Stack:
+ - Language: C++17
+ - Libraries: TgBot, nlohmann/json, libcurl
+ - AI backend: Yandex Cloud AI (GPT and Embeddings)
+
+📌 Key features:
+ - Automatic processing of large texts
+ - Backup text search when embeddings are unavailable
+ - Support for long responses (>4000 characters)
+ - Detailed logging and debugging
